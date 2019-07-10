@@ -1,0 +1,9 @@
+---
+- project:
+    name: disa/agilio-ovs-openstack-plugin
+    check:
+      jobs:
+        - linters
+    gate:
+      jobs:
+        - linters
