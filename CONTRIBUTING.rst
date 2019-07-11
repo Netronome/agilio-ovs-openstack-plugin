@@ -11,5 +11,3 @@ submitted for review via the Gerrit tool:
    http://docs.openstack.org/infra/manual/developers.html#development-workflow
 
 Pull requests submitted through GitHub will be ignored.
-
-Bugs should be filed on Launchpadhttps://bugs.launchpad.net/agilio-ovs-openstack-plugin

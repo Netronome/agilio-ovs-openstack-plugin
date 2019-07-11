@@ -1,0 +1,7 @@
+BOOTPROTO=none
+DEVICE={{ smartnic }}
+IPADDR=10.0.{{ smartnic_vlan }}.{{ last_octet }}
+NETMASK=255.255.255.0
+ONBOOT=yes
+TYPE=Ethernet
+USERCTL=no

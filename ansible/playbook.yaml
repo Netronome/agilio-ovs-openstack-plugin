@@ -1,0 +1,419 @@
+---
+# Execute with "ansible-playbook playbook.yaml -i hosts.yaml -v"
+- name: Prepare devstack setup
+  hosts: all
+  become: true
+  vars:
+    ctlnic: eno1
+    smartnic: ens3np0
+    fw_app: flower
+    fw_dir: /lib/firmware/netronome
+    dracut_conf: /etc/dracut.conf.d/98-nfp-firmware.conf
+    smartnic_vlan: 114
+    swapdisk: /dev/sdb
+    numvfs: 32
+    system_cores: 2
+    xvio_cores: 2
+    system_mem_g: 8
+    aovs_plugin: https://github.com/Netronome/agilio-ovs-openstack-plugin.git
+  tasks:
+    - name: Enable persistent journal
+      file:
+        path: /var/log/journal
+        state: directory
+    - name: Restart systemd-journald
+      systemd:
+        state: restarted
+        name: systemd-journald
+    - name: Remove cloud-init
+      yum:
+        name: cloud-init
+        state: absent
+    - name: Upgrade all packages
+      yum:
+        name: "*"
+        state: latest
+    - name: ensure convenient tools installed
+      yum:
+        name: "{{ packages }}"
+        state: latest
+      vars:
+        packages:
+        - vim
+        - patch
+        - diffstat
+        - git
+        - bridge-utils
+        - util-linux
+    - name: ensure the 'Development tools' package group is installed
+      yum:
+        name: "@Development tools"
+        state: latest
+    - name: Re-enable consistent naming
+      file:
+        name: /etc/udev/rules.d/80-net-name-slot.rules
+        state: absent
+    - name: remove 'dhcp-all-interfaces'
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /usr/lib/systemd/system/dhcp-interface@.service
+        - /etc/udev/rules.d/99-dhcp-all-interfaces.rules
+    - find:
+        paths: "/etc/sysconfig/network-scripts/"
+        patterns: "ifcfg-*"
+      register: ifcfgs
+    - name: Disable all nics except {{ ctlnic }} and lo
+      replace:
+        path: "{{ item.path }}"
+        regexp: '^ONBOOT=.*'
+        replace: 'ONBOOT=no'
+      with_items: "{{ ifcfgs.files }}"
+      when:
+        - item.path != (('/etc/sysconfig/network-scripts/ifcfg', ctlnic) | join('-'))
+        - item.path != "/etc/sysconfig/network-scripts/ifcfg-lo"
+    - name: Fix timeout in /etc/dhcp/dhclient.conf
+      replace:
+        path: /etc/dhcp/dhclient.conf
+        regexp: '^timeout 30$'
+        replace: 'timeout 30;'
+    - name: Load the vfio-pci module
+      modprobe:
+        name: vfio-pci
+        state: present
+    - name: Load vfio-pci at boot
+      copy:
+        content: "Load vfio-pci.ko at boot\nvfio-pci"
+        dest: /etc/modules-load.d/vfio-pci.conf
+        mode: 0655
+        owner: root
+        group: root
+        force: False
+    - name : Create temp directory
+      tempfile:
+        state: directory
+        suffix: ethtool
+      register: tmpdir
+    - name: Set ethtool debug dump level to 0
+      command: ethtool -W {{ smartnic }} 0
+    - name: Set ethtool debug dump level to 0
+      command: ethtool -w {{ smartnic }} data {{ tmpdir.path }}/ethtool.debug
+    - name: Scan strings in debug dump
+      command: strings {{ tmpdir.path }}/ethtool.debug
+      register: ethtool_strings
+    - name: Remove temp directory
+      file:
+        path: tmpdir.path
+        state: absent
+    - name: Extract serial from debug strings
+      set_fact:
+        smartnic_serial: "{{ ethtool_strings.stdout | regex_search('^SN: .*$', multiline=True) }}"
+    - name: Extract AMDA from serial
+      set_fact:
+        smartnic_amda: "{{ smartnic_serial | regex_search('AMDA[0-9]{4}') }}"
+    - name: Scan sysfs address of the smartnic
+      command: readlink -e /sys/class/net/{{ smartnic }}/device
+      register: pci_readlink
+    - name: Extract PCI address from sysfs path
+      set_fact:
+        smartnic_pciaddr: "{{ pci_readlink.stdout | basename }}"
+    - name: Symlink firmware
+      file:
+        dest: "{{ fw_dir }}/pci-{{ smartnic_pciaddr }}.nffw"
+        src: "{{ fw_app }}/nic_{{ smartnic_amda }}.nffw"
+        state: link
+        seuser: system_u
+        serole: object_r
+        setype: lib_t
+    - name: Unload nfp module
+      modprobe:
+        name: nfp
+        state: absent
+    - name: Reload nfp module
+      modprobe:
+        name: nfp
+        state: present
+    - name: Ensure dracut has a hook to load the firmware
+      template:
+        src: dracut.conf.j2
+        dest: "{{ dracut_conf }}"
+    - name: Rebuild initramfs
+      command: dracut --force --regenerate-all
+    - name: Check ipv4 address of {{ ctlnic }}
+      command: ip -f inet addr show dev {{ ctlnic }}
+      register: iproute2
+    - name: Extract IP of {{ ctlnic }}
+      set_fact:
+        ctlnic_ip: "{{ iproute2.stdout | regex_search('inet ([\\d.]+)', multiline=True) }}"
+    - name: Extract last octet of {{ ctlnic_ip }}
+      set_fact:
+        last_octet: "{{ ctlnic_ip | regex_replace('.*\\.') }}"
+    - name: Set up external net on {{ smartnic }}
+      template:
+        src: ifcfg-smartnic.j2
+        dest: /etc/sysconfig/network-scripts/ifcfg-{{ smartnic }}
+    - name: Find netdevs associated with NIC
+      find:
+        paths: /sys/bus/pci/devices/{{ smartnic_pciaddr }}/net
+        file_type: directory
+        recurse: no
+      register: netdev_sysfs
+    - set_fact:
+        pf_netdevs: "{{ netdev_sysfs | json_query('files[*].path') | map('basename') | sort }}"
+    - name: Config remaining PF netdevs
+      template:
+        src: ifcfg-up.j2
+        dest: /etc/sysconfig/network-scripts/ifcfg-{{ item }}
+      with_items: "{{ pf_netdevs }}"
+      when: item != smartnic
+    - name: Fetch {{ smartnic }} MAC
+      slurp:
+        src: /sys/class/net/{{ smartnic }}/address
+      register: smartnic_l2_address
+    - set_fact:
+        smartnic_mac: "{{ smartnic_l2_address['content'] | b64decode | trim }}"
+    - name: Fetch {{ smartnic }} phys_switch_id
+      slurp:
+        src: /sys/class/net/{{ smartnic }}/phys_switch_id
+      register: phys_switch_id
+    - name: Scan switchdev map
+      script: scripts/scan_switchdevs.py
+      register: switchdev_map
+    - set_fact:
+        smartnic_switchids: "{{ switchdev_map.stdout }}"
+    - name: Generate repr naming script
+      template:
+        src: switchdev-repr-name-gen.j2
+        dest: /lib/udev/switchdev-repr-name-gen
+        mode: 0755
+        seuser: system_u
+        serole: object_r
+        setype: bin_t
+    - name: Add rule to call repr naming script
+      template:
+        src: 77-switchdev-repr-name.rules.j2
+        dest: /etc/udev/rules.d/77-switchdev-repr-name.rules
+    - name: Persist {{ smartnic }} in udev based on MAC
+      lineinfile:
+        path: /etc/udev/rules.d/70-persistent-net.rules
+        state: present
+        regexp: 'ATTR{address}=="{{ smartnic_mac }}"'
+        line: "SUBSYSTEM==\"net\", ACTION==\"add\", DRIVERS==\"?*\", ATTR{address}==\"{{ smartnic_mac }}\", NAME=\"{{ smartnic }}\""
+    - name: Fetch number of VFs on {{ smartnic }}
+      slurp:
+        src: /sys/class/net/{{ smartnic }}/device/sriov_numvfs
+      register: existing_vfs
+    - set_fact:
+        smartnic_numvfs: "{{ existing_vfs['content'] | b64decode | trim }}"
+    - name: Create allocate-vfs script
+      template:
+        src: allocate-vfs.j2
+        dest: /etc/sysconfig/allocate-vfs
+        mode: 0755
+        owner: root
+        group: root
+        seuser: system_u
+        serole: object_r
+        setype: bin_t
+    - name: Ensure ifup-local exists
+      copy:
+        content: "#!/bin/sh\n"
+        dest: /sbin/ifup-local
+        mode: 0755
+        owner: root
+        group: root
+        force: False
+        seuser: system_u
+        serole: object_r
+        setype: bin_t
+    - name: Ensure allocate-vfs script is called for ifup-local
+      lineinfile:
+        path: /sbin/ifup-local
+        line: /etc/sysconfig/allocate-vfs $1
+    - name: Reset VFs to zero
+      shell: echo 0 > /sys/class/net/{{ smartnic }}/device/sriov_numvfs
+      when: smartnic_numvfs != 0 or smartnic_numvfs != numvfs
+    - name: Set VFs on {{ smartnic }} to {{ numvfs }}
+      shell: echo {{ numvfs }} > /sys/class/net/{{ smartnic }}/device/sriov_numvfs
+      when: smartnic_numvfs != numvfs
+    - name: Generate Tuning Profile
+      script: >-
+        scripts/gen_tuning_profile.py
+        --system_cores {{ system_cores }}
+        --xvio_cores {{ xvio_cores }}
+        --system_mem_g {{ system_mem_g }}
+      register: gen_tuning_profile
+    - set_fact:
+        tuning_profile: "{{ gen_tuning_profile.stdout | from_json }}"
+    - command: grubby --info=ALL
+      register: grubby_info
+    - set_fact:
+        latest_kernel: "{{ grubby_info.stdout | regex_findall('^kernel=(.*)', multiline=True) | sort | last }}"
+    - command: grubby --set-default={{ latest_kernel }}
+    - command: >-
+        grubby --args="intel_iommu=on
+        default_hugepagesz=2M hugepagesz=2M
+        hugepages={{ tuning_profile.hugepages_2m }}
+        isolcpus={{ tuning_profile.kernel_isolcpus }}
+        nohz_full={{ tuning_profile.kernel_isolcpus }}
+        rcu_nocbs={{ tuning_profile.kernel_isolcpus }}"
+        --update-kernel=ALL
+    - command: swapoff {{ swapdisk }}1
+      when: swapdisk is defined
+      ignore_errors: yes
+    - command: cat /proc/swaps
+      register: result
+      until: result.stdout.find((swapdisk, '1 ') | join('')) == -1
+      retries: 5
+      delay: 1
+      when: swapdisk is defined
+    - command: parted -a optimal -s {{ swapdisk }} mklabel gpt
+      when: swapdisk is defined
+    - command: parted -a optimal -s {{ swapdisk }}  mkpart primary linux-swap 0% 100%
+      when: swapdisk is defined
+    - command: swapoff {{ swapdisk }}1
+      when: swapdisk is defined
+      ignore_errors: yes
+    - command: cat /proc/swaps
+      register: result
+      until: result.stdout.find((swapdisk, '1 ') | join('')) == -1
+      retries: 5
+      delay: 1
+      when: swapdisk is defined
+    - command: mkswap -L swap {{ swapdisk }}1
+      when: swapdisk is defined
+    - lineinfile:
+        path: /etc/fstab
+        state: present
+        line: LABEL=swap swap swap defaults 0 0
+      when: swapdisk is defined
+    - command: swapon -av
+      when: swapdisk is defined
+    - name: Ensure 'stack' user exists
+      user:
+        name: stack
+        shell: /bin/bash
+        groups: wheel
+        append: yes
+        home: /opt/stack
+        generate_ssh_key: yes
+        ssh_key_type: ed25519
+        ssh_key_file: .ssh/id_ed25519
+        password: "$6$mysecretsalt$Ww9JYm6bHnqiBcJmHyeqdpF3KOUj5yLdbGp0/koXzqbnke4yEycJ3yTmmJrXXR7SlZUVHU8nDp67uWr/gJqLN1"
+        # ansible all -i localhost, -m debug -a "msg={{ 'stack' | password_hash('sha512', 'mysecretsalt') }}"
+    - name: Copy authorized keys from 'centos' user to 'stack' user
+      copy:
+        src: /home/centos/.ssh/authorized_keys
+        dest: /opt/stack/.ssh/authorized_keys
+        owner: stack
+        group: stack
+        mode: 0600
+        remote_src: yes
+    - name: Ensure 'stack' user has sudo rights
+      copy:
+        content: 'stack ALL=(ALL) NOPASSWD: ALL'
+        dest: /etc/sudoers.d/stack
+    - name: Create Ansible tmpdir for stack user
+      file:
+        path: /opt/stack/.ansible/tmp
+        state: directory
+        owner: stack
+        group: stack
+        mode: 0700
+    - name: Checkout devstack
+      git:
+        repo: https://git.openstack.org/openstack-dev/devstack
+        dest: /opt/stack/devstack
+      become_user: stack
+    - name: Set up local.conf
+      template:
+        src: local.conf.j2
+        dest: /opt/stack/devstack/local.conf
+      become_user: stack
+    - name: Set up local.sh
+      template:
+        src: local.sh.j2
+        dest: /opt/stack/devstack/local.sh
+        mode: 0755
+      become_user: stack
+    - name: Ensure hostname entry in /etc/hosts
+      lineinfile:
+        dest: /etc/hosts
+        line: 10.0.{{ smartnic_vlan }}.{{ last_octet }} {{ ansible_hostname }}
+        state: present
+    - name: Ensure pip is installed
+      easy_install:
+        name: pip
+        state: latest
+    - pip:
+        name: setuptools
+        executable: /bin/pip
+        extra_args: --upgrade
+    - name: install latest rdo-release
+      yum:
+        name: https://rdoproject.org/repos/rdo-release.rpm
+        state: latest
+    - name: Upgrade all packages
+      yum:
+        name: "*"
+        state: latest
+    - name: ensure openvswitch is installed
+      yum:
+        name: openvswitch
+        state: latest
+    - name: Start openvswitch
+      systemd:
+        state: started
+        name: openvswitch
+    - name: Enable TC offloads
+      openvswitch_db:
+        table: Open_vSwitch
+        record: .
+        col: other_config
+        key: hw-offload
+        value: true
+    - name: Stop openvswitch
+      systemd:
+        state: stopped
+        name: openvswitch
+    - name: Start openvswitch
+      systemd:
+        state: started
+        name: openvswitch
+    - name: Install requirements for virtio-forwarder
+      yum:
+        name: "{{ packages }}"
+        state: latest
+      vars:
+        packages:
+        - epel-release
+        - yum-plugin-copr
+    - name: Disable epel by default
+      command: yum-config-manager --disable epel
+    - name: Enable copr for virtio-forwarder
+      command: yum -y copr enable netronome/virtio-forwarder
+      args:
+        creates: /etc/yum.repos.d/_copr_netronome-virtio-forwarder.repo
+    - name: Install virtio-forwarder
+      yum:
+        name: virtio-forwarder
+        state: latest
+        enablerepo: epel
+    - name: Configure virtio-forwarder
+      template:
+        src: virtioforwarder.j2
+        dest: /etc/default/virtioforwarder
+    - name: Start virtio-forwarder
+      systemd:
+        enabled: yes
+        name: virtio-forwarder
+    - name: Checkout the aovs plugin
+      git:
+        repo: "{{ aovs_plugin }}"
+        dest: /opt/stack/agilio-ovs-openstack-plugin
+      become_user: stack
+    - name: install the aovs plugin
+      command: python setup.py install
+      args:
+        chdir: /opt/stack/agilio-ovs-openstack-plugin

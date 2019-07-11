@@ -1,0 +1,41 @@
+[[local|localrc]]
+ADMIN_PASSWORD=secret
+DATABASE_PASSWORD=$ADMIN_PASSWORD
+RABBIT_PASSWORD=$ADMIN_PASSWORD
+SERVICE_PASSWORD=$ADMIN_PASSWORD
+
+## Services
+disable_service n-net
+
+# enable_plugin os-vif https://opendev.org/openstack/os-vif
+enable_plugin neutron https://opendev.org/openstack/neutron
+
+PUBLIC_INTERFACE={{ smartnic }}
+HOST_IP=10.0.{{ smartnic_vlan }}.{{ last_octet }}
+FLOATING_RANGE=10.0.{{ smartnic_vlan }}.0/24
+PUBLIC_NETWORK_GATEWAY=10.0.{{ smartnic_vlan }}.1
+Q_FLOATING_ALLOCATION_POOL=start=10.0.{{ smartnic_vlan }}.200,end=10.0.{{ smartnic_vlan }}.250
+
+# Open vSwitch provider networking
+# Set up the public interface on 'br-ex' an OVS bridge
+# Call the network 'public'
+# Enable vxlan tenant networking
+# Enable vxlan, vlan and flat provider networks
+
+Q_USE_PROVIDERNET_FOR_PUBLIC=True
+Q_ASSIGN_GATEWAY_TO_PUBLIC_BRIDGE=False
+Q_USE_PUBLIC_VETH=False
+PHYSICAL_NETWORK=public
+OVS_PHYSICAL_BRIDGE=br-ex
+PUBLIC_BRIDGE=br-ex
+OVS_BRIDGE_MAPPINGS=public:br-ex
+ML2_VLAN_RANGES=public
+Q_ML2_PLUGIN_TYPE_DRIVERS=vxlan,vlan,flat
+
+[[post-config|$NOVA_CONF]]
+[DEFAULT]
+vcpu_pin_set={{ tuning_profile.nova_vcpupin }}
+[scheduler]
+enabled_filters=RetryFilter,AvailabilityZoneFilter,ComputeFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,PciPassthroughFilter
+[pci]
+passthrough_whitelist={\\"devname\\":\\"{{ smartnic }}\\",\\"physical_network\\":null}

@@ -1,0 +1,14 @@
+# This udev rule is intended to be installed at:
+# /etc/udev/rules.d/77-switchdev-repr-name.rules
+# It provides consistent naming for VF and PF reprs
+ACTION!="add", GOTO="switchdev_repr_name_end"
+SUBSYSTEM!="net", GOTO="switchdev_repr_name_end"
+
+ATTR{phys_switch_id}=="?*", IMPORT{program}="/lib/udev/switchdev-repr-name-gen %k"
+
+IMPORT{cmdline}="net.ifnames"
+ENV{net.ifnames}=="0", GOTO="switchdev_repr_name_end"
+
+NAME=="", ENV{ID_NET_NAME_REPR}!="", NAME="$env{ID_NET_NAME_REPR}"
+
+LABEL="switchdev_repr_name_end"

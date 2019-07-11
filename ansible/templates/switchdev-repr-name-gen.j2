@@ -1,0 +1,28 @@
+#!/bin/sh
+
+# This is a helper script to provide more consistent netdev
+# names for VF and PF representors across reboots.
+
+# This script is intended to reside at:
+# /lib/udev/switchdev-repr-name-gen
+
+SYSPATH="/sys/class/net/$1"
+PHYS_PORT_NAME=$(<"${SYSPATH}/phys_port_name")
+PHYS_SWITCH_ID=$(<"${SYSPATH}/phys_switch_id")
+
+# The following fields need to be PRESENT
+[ -z "${PHYS_PORT_NAME}" ] && exit 0
+[ -z "${PHYS_SWITCH_ID}" ] && exit 0
+# The following fields need to be ABSENT
+[ -z "${ID_NET_NAME_ONBOARD}" ] || exit 0
+[ -z "${ID_NET_NAME_SLOT}" ] || exit 0
+[ -z "${ID_NET_NAME_PATH}" ] || exit 0
+
+# This section is generated using a jinja2 template:
+{% for switchid, netdev in smartnic_switchids.items() %}
+[ "${PHYS_SWITCH_ID}" = "{{ switchid }}" ] && PREFIX="{{ netdev }}"
+{% endfor %}
+
+ID_NET_NAME_REPR=${PREFIX}r${PHYS_PORT_NAME}
+
+[ -n "${ID_NET_NAME_REPR}" ] && echo "ID_NET_NAME_REPR=${ID_NET_NAME_REPR}"

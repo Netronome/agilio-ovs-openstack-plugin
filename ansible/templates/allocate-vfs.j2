@@ -1,0 +1,2 @@
+#!/bin/sh
+[ "{{ smartnic }}" == "$1" ] && echo {{ numvfs }} > /sys/class/net/{{ smartnic }}/device/sriov_numvfs
