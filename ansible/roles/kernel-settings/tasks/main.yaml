@@ -1,0 +1,18 @@
+---
+- set_fact:
+    grub_cmdline_args:
+      - intel_iommu=on
+      - default_hugepagesz=2M
+      - hugepagesz=2M
+      - hugepages={{ tuning_profile.hugepages_2m }}
+      - isolcpus={{ tuning_profile.kernel_isolcpus }}
+      - nohz_full={{ tuning_profile.kernel_isolcpus }}
+      - rcu_nocbs={{ tuning_profile.kernel_isolcpus }}
+
+- name: Run EL7 specific tasks
+  import_tasks: redhat.yaml
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Run Ubuntu specific tasks
+  import_tasks: debian.yaml
+  when: ansible_facts['os_family']|lower == 'debian'

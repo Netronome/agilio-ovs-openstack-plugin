@@ -40,8 +40,8 @@ Q_ML2_PLUGIN_TYPE_DRIVERS=vxlan,vlan,flat
 [[post-config|$NOVA_CONF]]
 [DEFAULT]
 vcpu_pin_set={{ tuning_profile.nova_vcpupin }}
-[scheduler]
-enabled_filters=RetryFilter,AvailabilityZoneFilter,ComputeFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,PciPassthroughFilter
+[filter_scheduler]
+enabled_filters=AvailabilityZoneFilter,ComputeFilter,ComputeCapabilitiesFilter,ImagePropertiesFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter,SameHostFilter,DifferentHostFilter,PciPassthroughFilter
 [pci]
 passthrough_whitelist={\\"devname\\":\\"{{ smartnic }}\\",\\"physical_network\\":null}
 

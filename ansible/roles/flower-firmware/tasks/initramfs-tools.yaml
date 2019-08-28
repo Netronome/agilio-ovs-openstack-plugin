@@ -1,0 +1,9 @@
+---
+- name: Ubuntu - Ensure initramfs-tools has a hook to load the firmware
+  template:
+    src: initramfs-hook.j2
+    dest: "{{ initramfs_hook }}"
+    mode: 0755
+
+- name: Ubuntu - Rebuild initramfs
+  command: update-initramfs -u -k all

@@ -1,0 +1,14 @@
+---
+- name: Load the vfio-pci module
+  modprobe:
+    name: vfio-pci
+    state: present
+
+- name: Load vfio-pci at boot
+  copy:
+    content: "# Load vfio-pci.ko at boot\nvfio-pci"
+    dest: /etc/modules-load.d/vfio-pci.conf
+    mode: 0655
+    owner: root
+    group: root
+    force: false

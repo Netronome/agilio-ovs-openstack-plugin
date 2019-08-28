@@ -2,4 +2,7 @@ BOOTPROTO=none
 DEVICE={{ item }}
 ONBOOT=yes
 TYPE=Ethernet
+MTU={{ mtu_map[item] }}
 USERCTL=no
+NOZEROCONF=yes
+IPV6INIT=no

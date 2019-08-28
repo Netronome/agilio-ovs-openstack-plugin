@@ -1,0 +1,61 @@
+---
+- name: Read netplan config
+  slurp:
+    path: /etc/netplan/50-cloud-init.yaml
+  register: netplan_config_file
+
+- set_fact:
+    netplan_config: "{{ netplan_config_file.content | b64decode | from_yaml }}"
+
+- name: Select the config for {{ ctlnic }}
+  set_fact:
+    eth_conf: "{{ {ctlnic: netplan_config.network.ethernets[ctlnic]} }}"
+
+# NOTE(jangutter): netplan does not currently support configuring a device to
+# be 'up' and with an MTU if it doesn't also have link and IPv4 settings.
+# This is problematic for us, because libvirt requires _all_ the pf_netdevs
+# to be 'up' and we need the PF to have max MTU set.
+#
+# - name: Add rules for non-primary netdevs
+#   set_fact:
+#     eth_conf: >-
+#       {{ eth_conf | combine(
+#       {item: {'match': {'macaddress': ansible_facts[item]['macaddress']},
+#       'mtu': mtu_map[item],
+#       'set-name': item}}) }}
+#   with_items: "{{ smartnic_pf_netdevs }}"
+#   when: item != smartnic
+
+- set_fact:
+    smartnic_addr: "10.0.{{ smartnic_vlan }}.{{ last_octet }}/24"
+
+- name: Set IPv4 address for {{ smartnic }}
+  set_fact:
+    eth_conf: >-
+      {{ eth_conf | combine(
+      {smartnic: {
+      'match': {'macaddress': smartnic_mac},
+      'mtu': mtu_map[smartnic],
+      'set-name': smartnic,
+      'addresses': [smartnic_addr]
+      }}) }}
+
+- set_fact:
+    netplan_network: >-
+      {{ netplan_config.network | combine({'ethernets': eth_conf}) }}
+
+- set_fact:
+    netplan_config: >-
+      {{ netplan_config | combine({'network': netplan_network}) }}
+
+- template:
+    src: netplan.yaml.j2
+    dest: /etc/netplan/50-cloud-init.yaml
+  register: netplan_config_template
+
+- template:
+    src: 99-disable-network-config.cfg.j2
+    dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+
+- command: netplan apply
+  when: netplan_config_template.changed

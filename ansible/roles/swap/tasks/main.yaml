@@ -1,0 +1,41 @@
+---
+- command: swapoff {{ swapdisk }}1
+  when: swapdisk is defined
+  ignore_errors: true
+
+- command: cat /proc/swaps
+  register: result
+  until: result.stdout.find((swapdisk, '1 ') | join('')) == -1
+  retries: 5
+  delay: 1
+  when: swapdisk is defined
+
+- command: parted -a optimal -s {{ swapdisk }} mklabel gpt
+  when: swapdisk is defined
+
+- command: >-
+    parted -a optimal -s {{ swapdisk }}  mkpart primary linux-swap 0% 100%
+  when: swapdisk is defined
+
+- command: swapoff {{ swapdisk }}1
+  when: swapdisk is defined
+  ignore_errors: true
+
+- command: cat /proc/swaps
+  register: result
+  until: result.stdout.find((swapdisk, '1 ') | join('')) == -1
+  retries: 5
+  delay: 1
+  when: swapdisk is defined
+
+- command: mkswap -L swap {{ swapdisk }}1
+  when: swapdisk is defined
+
+- lineinfile:
+    path: /etc/fstab
+    state: present
+    line: LABEL=swap swap swap defaults 0 0
+  when: swapdisk is defined
+
+- command: swapon -av
+  when: swapdisk is defined

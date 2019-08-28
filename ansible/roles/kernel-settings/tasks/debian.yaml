@@ -1,0 +1,8 @@
+---
+- name: Ubuntu - Update GRUB parameters
+  lineinfile:
+    dest: /etc/default/grub
+    line: GRUB_CMDLINE_LINUX="{{ grub_cmdline_args | join(' ') }}"
+    regexp: '^GRUB_CMDLINE_LINUX="'
+
+- command: update-grub2

@@ -1,5 +1,30 @@
 ---
 all:
   hosts:
-    floating09.netronome.com:
+    floating09:
       ansible_user: centos
+      ctlnic: eno1
+      smartnic: ens3np0
+      numvfs: 32
+      smartnic_vlan: 114
+      network_profile: redhat.yaml
+      swapdisk: /dev/sdb
+      system_cores: 2
+      xvio_cores: 2
+      system_mem_g: 8
+      interface_mtu:
+        ens3: 9420
+    floating10:
+      ansible_user: ubuntu
+      ansible_python_interpreter: /usr/bin/python3
+      ctlnic: eno1
+      smartnic: ens3np0
+      numvfs: 32
+      smartnic_vlan: 114
+      network_profile: ubuntu.yaml
+      swapdisk: /dev/sdb
+      system_cores: 2
+      xvio_cores: 2
+      system_mem_g: 8
+      interface_mtu:
+        ens3: 9420

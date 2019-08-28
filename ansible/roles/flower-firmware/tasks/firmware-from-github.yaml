@@ -1,0 +1,15 @@
+---
+- name: Create '/opt/netronome' directory
+  file:
+    path: /opt/netronome
+    state: directory
+    mode: '0755'
+
+- name: Clone linux-firmware from Netronome's github mirror
+  git:
+    repo: https://github.com/Netronome/linux-firmware.git
+    dest: /opt/netronome/linux-firmware
+    depth: 1
+
+- set_fact:
+    fw_root: /opt/netronome/linux-firmware/netronome/

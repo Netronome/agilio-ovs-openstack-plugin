@@ -1,0 +1,18 @@
+#!/bin/sh
+PREREQ=""
+prereqs()
+{
+    echo "$PREREQ"
+}
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+. /usr/share/initramfs-tools/hook-functions
+cp "{{ fw_symlink }}" "${DESTDIR}{{ fw_symlink }}"
+if have_module nfp ; then
+    manual_add_modules nfp
+fi
+exit 0

@@ -1,0 +1,35 @@
+---
+- name: Re-run facts module to get latest information
+  setup:
+
+- name: Find PCI address for {{ smartnic }}
+  set_fact:
+    smartnic_pciaddr: "{{ ansible_facts[smartnic]['pciid'] }}"
+  when: smartnic_pciaddr is not defined
+
+- name: Find netdevs associated with {{ smartnic }}
+  set_fact:
+    smartnic_pf_netdevs: >-
+      {{ ansible_facts
+      | json_query('@.* | [?pciid==`' + smartnic_pciaddr + '`].device') }}
+
+- name: Create MTU map for the netdevs associated with {{ smartnic }}
+  set_fact:
+    mtu_map: >-
+      {{ mtu_map | default({})
+      | combine({item: interface_mtu[item] | default(default_mtu)}) }}
+  with_items: "{{ smartnic_pf_netdevs }}"
+
+- name: Find IPv4 address of {{ ctlnic }}
+  set_fact:
+    ctlnic_ip: "{{ ansible_facts[ctlnic]['ipv4']['address'] }}"
+
+- name: Extract last octet of {{ ctlnic_ip }}
+  set_fact:
+    last_octet: "{{ ctlnic_ip | regex_replace('.*\\.') }}"
+
+- set_fact:
+    smartnic_mac: "{{ ansible_facts[smartnic]['macaddress'] }}"
+
+- name: Run network profile
+  include_tasks: "{{ network_profile }}"

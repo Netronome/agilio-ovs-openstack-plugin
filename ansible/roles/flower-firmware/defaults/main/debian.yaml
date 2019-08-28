@@ -1,0 +1,2 @@
+---
+initramfs_hook: /etc/initramfs-tools/hooks/nfp-firmware

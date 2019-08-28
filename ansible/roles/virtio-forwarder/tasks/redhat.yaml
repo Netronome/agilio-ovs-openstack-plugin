@@ -1,0 +1,24 @@
+---
+- name: EL7 - Install requirements for virtio-forwarder
+  yum:
+    name: "{{ packages }}"
+    state: latest
+  vars:
+    packages:
+      - epel-release
+      - yum-plugin-copr
+
+- name: EL7 - Disable epel by default
+  command: yum-config-manager --disable epel
+
+- name: EL7 - Enable copr for virtio-forwarder
+  command: yum -y copr enable netronome/virtio-forwarder
+  args:
+    creates: /etc/yum.repos.d/_copr_netronome-virtio-forwarder.repo
+    warn: false
+
+- name: EL7 - Install virtio-forwarder
+  yum:
+    name: virtio-forwarder
+    state: latest
+    enablerepo: epel

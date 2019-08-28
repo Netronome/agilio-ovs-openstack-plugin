@@ -1,0 +1,15 @@
+---
+- name: Ubuntu - add virtio-forwarder ppa
+  apt_repository:
+    repo: ppa:netronome/virtio-forwarder
+
+- name: Ubuntu - Upgrade all packages to the latest version
+  apt:
+    name: "*"
+    state: latest
+    update_cache: true
+    force_apt_get: true
+
+- name: Ubuntu - Ensure virtio-forwarder is installed
+  apt:
+    name: virtio-forwarder

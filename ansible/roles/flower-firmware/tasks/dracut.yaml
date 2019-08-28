@@ -1,0 +1,8 @@
+---
+- name: EL7 - Ensure dracut has a hook to load the firmware
+  template:
+    src: dracut.conf.j2
+    dest: "{{ dracut_conf }}"
+
+- name: EL7 - Rebuild initramfs
+  command: dracut --force --regenerate-all

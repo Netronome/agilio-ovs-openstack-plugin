@@ -1,0 +1,18 @@
+---
+- name: Run EL7 specific tasks
+  import_tasks: redhat.yaml
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Run Ubuntu specific tasks
+  import_tasks: debian.yaml
+  when: ansible_facts['os_family']|lower == 'debian'
+
+- name: Configure virtio-forwarder
+  template:
+    src: virtioforwarder.j2
+    dest: /etc/default/virtioforwarder
+
+- name: Enable virtio-forwarder on boot
+  systemd:
+    enabled: true
+    name: virtio-forwarder

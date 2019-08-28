@@ -1,0 +1,31 @@
+---
+- name: Run EL7 specific tasks
+  import_tasks: redhat.yaml
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Run Ubuntu specific tasks
+  import_tasks: debian.yaml
+  when: ansible_facts['os_family']|lower == 'debian'
+
+- name: Start openvswitch
+  systemd:
+    state: started
+    name: "{{ openvswitch_service }}"
+
+- name: Enable TC offloads
+  openvswitch_db:
+    table: Open_vSwitch
+    record: .
+    col: other_config
+    key: hw-offload
+    value: true
+
+- name: Stop openvswitch
+  systemd:
+    state: stopped
+    name: "{{ openvswitch_service }}"
+
+- name: Start openvswitch
+  systemd:
+    state: started
+    name: "{{ openvswitch_service }}"

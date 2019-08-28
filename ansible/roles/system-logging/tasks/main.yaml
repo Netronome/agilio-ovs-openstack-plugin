@@ -1,0 +1,19 @@
+---
+- name: Enable persistent journal
+  file:
+    path: /var/log/journal
+    state: directory
+  register: journal_dir
+
+- name: Restart systemd-journald
+  systemd:
+    state: restarted
+    name: systemd-journald
+  when: journal_dir.changed
+
+- name: Ubuntu - Remove rsyslog
+  apt:
+    name: rsyslog
+    state: absent
+    purge: true
+  when: ansible_facts['os_family']|lower == 'debian'

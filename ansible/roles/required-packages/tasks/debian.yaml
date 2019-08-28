@@ -1,0 +1,21 @@
+---
+- name: Ubuntu - Upgrade all packages to the latest version
+  apt:
+    name: "*"
+    state: latest
+    update_cache: true
+    force_apt_get: true
+
+- name: Ubuntu - Ensure convenient tools installed
+  apt:
+    name: "{{ packages }}"
+  vars:
+    packages:
+      - vim
+      - patch
+      - diffstat
+      - git
+      - bridge-utils
+      - util-linux
+      - build-essential
+      - linux-generic-hwe-18.04

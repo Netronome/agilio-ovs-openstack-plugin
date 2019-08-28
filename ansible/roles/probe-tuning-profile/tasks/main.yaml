@@ -1,0 +1,11 @@
+---
+- name: Probe machine and generate tuning profile
+  script: >-
+    scripts/gen_tuning_profile.py
+    --system_cores {{ system_cores }}
+    --xvio_cores {{ xvio_cores }}
+    --system_mem_g {{ system_mem_g }}
+  register: gen_tuning_profile
+
+- set_fact:
+    tuning_profile: "{{ gen_tuning_profile.stdout | from_json }}"

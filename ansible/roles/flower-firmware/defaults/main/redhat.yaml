@@ -1,0 +1,2 @@
+---
+dracut_conf: /etc/dracut.conf.d/98-nfp-firmware.conf

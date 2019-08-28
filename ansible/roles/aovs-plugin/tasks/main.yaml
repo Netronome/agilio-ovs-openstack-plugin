@@ -1,0 +1,12 @@
+---
+- name: Checkout the aovs plugin
+  git:
+    repo: "{{ aovs_plugin }}"
+    dest: /opt/stack/agilio-ovs-openstack-plugin
+  become_user: stack
+  become: true
+
+- name: install the aovs plugin
+  command: python setup.py install
+  args:
+    chdir: /opt/stack/agilio-ovs-openstack-plugin

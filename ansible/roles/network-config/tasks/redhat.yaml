@@ -1,0 +1,31 @@
+---
+- find:
+    paths: '/etc/sysconfig/network-scripts/'
+    patterns: 'ifcfg-*'
+  register: ifcfgs
+
+- name: Disable all nics except {{ ctlnic }} and lo
+  replace:
+    path: "{{ item.path }}"
+    regexp: '^ONBOOT=.*'
+    replace: 'ONBOOT=no'
+  with_items: "{{ ifcfgs.files }}"
+  when:
+    - >-
+        item.path !=
+        (('/etc/sysconfig/network-scripts/ifcfg', ctlnic) | join('-'))
+    - >-
+        item.path !=
+        '/etc/sysconfig/network-scripts/ifcfg-lo'
+
+- name: Set up external net on {{ smartnic }}
+  template:
+    src: ifcfg-smartnic.j2
+    dest: /etc/sysconfig/network-scripts/ifcfg-{{ smartnic }}
+
+- name: Config remaining PF netdevs
+  template:
+    src: ifcfg-up.j2
+    dest: /etc/sysconfig/network-scripts/ifcfg-{{ item }}
+  with_items: "{{ smartnic_pf_netdevs }}"
+  when: item != smartnic

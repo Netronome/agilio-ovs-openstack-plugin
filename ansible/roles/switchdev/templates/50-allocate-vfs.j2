@@ -1,0 +1,14 @@
+#!/bin/sh
+# NOTE(jangutter): Ubuntu's netplan does not support setting netdevs
+# 'up' and configuring MTU without also failing when link is not detected.
+# Work around this by explicitly setting the link state and MTU here for the
+# "unmanaged" devices.
+
+{% for item in smartnic_pf_netdevs %}
+{% if item != smartnic %}
+ip link set dev {{ item }} mtu {{ mtu_map[item] }}
+ip link set dev {{ item }} up
+{% endif %}
+{% endfor %}
+
+echo {{ numvfs }} > /sys/class/net/{{ smartnic }}/device/sriov_numvfs

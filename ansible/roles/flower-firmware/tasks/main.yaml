@@ -1,0 +1,75 @@
+---
+- name: Create temp directory
+  tempfile:
+    state: directory
+    suffix: ethtool
+  register: tmpdir
+
+- name: Set ethtool debug dump level to 0
+  command: ethtool -W {{ smartnic }} 0
+
+- name: Set ethtool debug dump level to 0
+  command: ethtool -w {{ smartnic }} data {{ tmpdir.path }}/ethtool.debug
+
+- name: Scan strings in debug dump
+  command: strings {{ tmpdir.path }}/ethtool.debug
+  register: ethtool_strings
+
+- name: Remove temp directory
+  file:
+    path: tmpdir.path
+    state: absent
+
+- name: Extract serial from debug strings
+  set_fact:
+    smartnic_serial: >-
+      {{ ethtool_strings.stdout | regex_search('^SN: .*$', multiline=True) }}
+
+- name: Extract AMDA from serial
+  set_fact:
+    smartnic_amda: "{{ smartnic_serial | regex_search('AMDA[0-9]{4}') }}"
+
+- name: Scan sysfs address of the smartnic
+  command: readlink -e /sys/class/net/{{ smartnic }}/device
+  register: pci_readlink
+
+- name: Extract PCI address from sysfs path
+  set_fact:
+    smartnic_pciaddr: "{{ pci_readlink.stdout | basename }}"
+
+- set_fact:
+    fw_root: ""
+
+- name: Ubuntu - Clone firmware from github
+  import_tasks: firmware-from-github.yaml
+  when: ansible_facts['os_family']|lower == 'debian'
+
+- set_fact:
+    fw_symlink: "{{ fw_dir }}/pci-{{ smartnic_pciaddr }}.nffw"
+
+- name: Symlink firmware
+  file:
+    dest: "{{ fw_symlink }}"
+    src: "{{ fw_root }}{{ fw_app }}/nic_{{ smartnic_amda }}.nffw"
+    state: link
+    seuser: system_u
+    serole: object_r
+    setype: lib_t
+
+- name: Unload nfp module
+  modprobe:
+    name: nfp
+    state: absent
+
+- name: Reload nfp module
+  modprobe:
+    name: nfp
+    state: present
+
+- name: EL7 - setup dracut
+  import_tasks: dracut.yaml
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Ubuntu - update initramfs
+  import_tasks: initramfs-tools.yaml
+  when: ansible_facts['os_family']|lower == 'debian'

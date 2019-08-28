@@ -7,8 +7,8 @@
 # /lib/udev/switchdev-repr-name-gen
 
 SYSPATH="/sys/class/net/$1"
-PHYS_PORT_NAME=$(<"${SYSPATH}/phys_port_name")
-PHYS_SWITCH_ID=$(<"${SYSPATH}/phys_switch_id")
+PHYS_PORT_NAME=`cat ${SYSPATH}/phys_port_name`
+PHYS_SWITCH_ID=`cat ${SYSPATH}/phys_switch_id`
 
 # The following fields need to be PRESENT
 [ -z "${PHYS_PORT_NAME}" ] && exit 0

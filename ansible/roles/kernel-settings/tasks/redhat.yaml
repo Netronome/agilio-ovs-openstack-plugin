@@ -1,0 +1,28 @@
+---
+- name: EL7 - Find grub.cfg
+  stat:
+    path: "{{ item }}"
+  with_items:
+    - /boot/grub2-efi/grub.cfg
+    - /boot/grub2/grub.cfg
+    - /etc/grub2.cfg
+    - /etc/grub2-efi.cfg
+  register: grubcfg
+
+- name: EL7 - Reset grub2 config
+  command: grub2-mkconfig -o {{ item.item }}
+  with_items: "{{ grubcfg.results }}"
+  when: item.stat.exists and not item.stat.islnk
+
+- command: grubby --info=ALL
+  register: grubby_info
+
+- set_fact:
+    latest_kernel: >-
+      {{ grubby_info.stdout |
+      regex_findall('^kernel=(.*)', multiline=True) | sort | last }}
+
+- command: grubby --set-default={{ latest_kernel }}
+
+- command: >-
+    grubby --args="{{ grub_cmdline_args | join(' ') }}" --update-kernel=ALL

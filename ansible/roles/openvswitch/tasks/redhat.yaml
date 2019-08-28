@@ -1,0 +1,18 @@
+---
+- name: EL7 - install latest rdo-release
+  yum:
+    name: https://rdoproject.org/repos/rdo-release.rpm
+    state: latest
+
+- name: EL7 - upgrade all packages
+  yum:
+    name: "*"
+    state: latest
+
+- name: EL7 - ensure openvswitch is installed
+  yum:
+    name: openvswitch
+    state: latest
+
+- set_fact:
+    openvswitch_service: openvswitch

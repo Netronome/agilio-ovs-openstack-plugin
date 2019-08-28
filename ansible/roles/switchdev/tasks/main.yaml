@@ -1,0 +1,111 @@
+---
+- name: Find PCI address for {{ smartnic }}
+  set_fact:
+    smartnic_pciaddr: "{{ ansible_facts[smartnic]['pciid'] }}"
+  when: smartnic_pciaddr is not defined
+
+- name: Find netdevs associated with {{ smartnic }}
+  set_fact:
+    smartnic_pf_netdevs: >-
+      {{ ansible_facts
+      | json_query('@.* | [?pciid==`' + smartnic_pciaddr + '`].device') }}
+
+- name: Create MTU map for the netdevs associated with {{ smartnic }}
+  set_fact:
+    mtu_map: >-
+      {{ mtu_map | default({})
+      | combine({item: interface_mtu[item] | default(default_mtu)}) }}
+  with_items: "{{ smartnic_pf_netdevs }}"
+
+- set_fact:
+    smartnic_mac: "{{ ansible_facts[smartnic]['macaddress'] }}"
+
+- name: Fetch {{ smartnic }} phys_switch_id
+  slurp:
+    src: /sys/class/net/{{ smartnic }}/phys_switch_id
+  register: phys_switch_id
+
+- name: Scan switchdev map
+  script: scripts/scan_switchdevs.py
+  register: switchdev_map
+
+- set_fact:
+    smartnic_switchids: "{{ switchdev_map.stdout }}"
+
+- name: Generate repr naming script
+  template:
+    src: switchdev-repr-name-gen.j2
+    dest: /lib/udev/switchdev-repr-name-gen
+    mode: 0755
+    seuser: system_u
+    serole: object_r
+    setype: bin_t
+
+- name: Add rule to call repr naming script
+  template:
+    src: 77-switchdev-repr-name.rules.j2
+    dest: /etc/udev/rules.d/77-switchdev-repr-name.rules
+
+- name: Check if persistent net rules exist
+  stat:
+    path: /etc/udev/rules.d/70-persistent-net.rules
+  register: persistent_net_rules
+
+- name: Persist {{ smartnic }} in udev based on MAC
+  lineinfile:
+    path: /etc/udev/rules.d/70-persistent-net.rules
+    state: present
+    regexp: 'ATTR{address}=="{{ smartnic_mac }}"'
+    line: >-
+      SUBSYSTEM=="net", ACTION=="add", DRIVERS=="?*",
+      ATTR{address}=="{{ smartnic_mac }}", NAME="{{ smartnic }}"
+  when: persistent_net_rules.stat.exists
+
+- name: Create allocate-vfs script
+  template:
+    src: allocate-vfs.j2
+    dest: /etc/sysconfig/allocate-vfs
+    mode: 0755
+    owner: root
+    group: root
+    seuser: system_u
+    serole: object_r
+    setype: bin_t
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Ensure ifup-local exists
+  copy:
+    content: "#!/bin/sh\n"
+    dest: /sbin/ifup-local
+    mode: 0755
+    owner: root
+    group: root
+    force: false
+    seuser: system_u
+    serole: object_r
+    setype: bin_t
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Ensure allocate-vfs script is called for ifup-local
+  lineinfile:
+    path: /sbin/ifup-local
+    line: /etc/sysconfig/allocate-vfs $1
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: add networkd-dispatcher hook to allocate vfs
+  template:
+    src: 50-allocate-vfs.j2
+    dest: /usr/lib/networkd-dispatcher/routable.d/50-allocate-vfs
+    mode: 0755
+    owner: root
+    group: root
+  when: ansible_facts['os_family']|lower == 'debian'
+
+- name: configure networkd-dispatcher
+  lineinfile:
+    path: /etc/default/networkd-dispatcher
+    state: present
+    create: true
+    regexp: networkd_dispatcher_args
+    line: networkd_dispatcher_args="--run-startup-triggers"
+  when: ansible_facts['os_family']|lower == 'debian'

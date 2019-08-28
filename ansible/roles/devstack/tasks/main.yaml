@@ -1,0 +1,76 @@
+---
+- set_fact:
+    sudo_group: sudo
+  when: ansible_facts['os_family']|lower == 'debian'
+
+- name: Ensure 'stack' user exists
+  user:
+    name: stack
+    shell: /bin/bash
+    groups: "{{ sudo_group | default('wheel') }}"
+    append: true
+    home: /opt/stack
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_file: .ssh/id_ed25519
+    password: "$6$mysecretsalt$Ww9JYm6bHnqiBcJmHyeqdpF3KOUj5yLdbGp0/koXzqbnke\
+              4yEycJ3yTmmJrXXR7SlZUVHU8nDp67uWr/gJqLN1"
+    # ansible all -i localhost, -m debug -a \
+    # "msg={{ 'stack' | password_hash('sha512', 'mysecretsalt') }}"
+
+- name: Copy authorized keys from '{{ ansible_user }}' to 'stack' user
+  copy:
+    src: /home/{{ ansible_user }}/.ssh/authorized_keys
+    dest: /opt/stack/.ssh/authorized_keys
+    owner: stack
+    group: stack
+    mode: 0600
+    remote_src: true
+
+- name: Set stack user home directory permissions and ownership
+  file:
+    path: /opt/stack
+    mode: 0755
+    owner: stack
+    group: stack
+
+- name: Ensure 'stack' user has sudo rights
+  copy:
+    content: 'stack ALL=(ALL) NOPASSWD: ALL'
+    dest: /etc/sudoers.d/stack
+
+- name: Create Ansible tmpdir for stack user
+  file:
+    path: /opt/stack/.ansible/tmp
+    state: directory
+    owner: stack
+    group: stack
+    mode: 0700
+
+- name: Checkout devstack
+  git:
+    repo: https://git.openstack.org/openstack-dev/devstack
+    dest: /opt/stack/devstack
+  become_user: stack
+  become: true
+
+- name: Set up local.conf
+  template:
+    src: local.conf.j2
+    dest: /opt/stack/devstack/local.conf
+  become_user: stack
+  become: true
+
+- name: Set up local.sh
+  template:
+    src: local.sh.j2
+    dest: /opt/stack/devstack/local.sh
+    mode: 0755
+  become_user: stack
+  become: true
+
+- name: Ensure hostname entry in /etc/hosts
+  lineinfile:
+    dest: /etc/hosts
+    line: 10.0.{{ smartnic_vlan }}.{{ last_octet }} {{ ansible_hostname }}
+    state: present

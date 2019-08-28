@@ -1,0 +1,31 @@
+---
+- name: EL7 - Remove cloud-init
+  yum:
+    name: cloud-init
+    state: absent
+  when: ansible_facts['os_family']|lower == 'redhat'
+
+- name: Ubuntu - Remove cloud-init
+  apt:
+    name: cloud-init
+    state: absent
+  when: ansible_facts['os_family']|lower == 'debian'
+
+- name: Re-enable consistent naming
+  file:
+    name: /etc/udev/rules.d/80-net-name-slot.rules
+    state: absent
+
+- name: Remove 'dhcp-all-interfaces'
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - /usr/lib/systemd/system/dhcp-interface@.service
+    - /etc/udev/rules.d/99-dhcp-all-interfaces.rules
+
+- name: Fix timeout in /etc/dhcp/dhclient.conf
+  replace:
+    path: /etc/dhcp/dhclient.conf
+    regexp: '^timeout 30$'
+    replace: 'timeout 30;'
