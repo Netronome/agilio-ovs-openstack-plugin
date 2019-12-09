@@ -16,6 +16,8 @@
       - git
       - bridge-utils
       - util-linux
+      - screen
+      - rpmdevtools
 
 - name: EL7 - Ensure the 'Development tools' package group is installed
   yum:

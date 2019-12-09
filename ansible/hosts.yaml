@@ -1,6 +1,23 @@
 ---
 all:
   hosts:
+## Example config for Ubuntu Bionic
+#      floating08:
+#        ansible_user: ubuntu
+#        ansible_python_interpreter: /usr/bin/python3
+#        ctlnic: eno1
+#        smartnic: ens3np0
+#        numvfs: 32
+#        smartnic_vlan: 114
+#        network_profile: ubuntu.yaml
+#        swapdisk: /dev/sdb
+#        system_cores: 2
+#        xvio_cores: 2
+#        system_mem_g: 8
+#        interface_mtu:
+#          ens3: 9420
+#       devstack_role: allinone
+#       neutron_ml2_plugin: aovs
     floating09:
       ansible_user: centos
       ctlnic: eno1
@@ -10,21 +27,31 @@ all:
       network_profile: redhat.yaml
       swapdisk: /dev/sdb
       system_cores: 2
-      xvio_cores: 2
+      xvio_cores: 0
       system_mem_g: 8
       interface_mtu:
         ens3: 9420
+      devstack_role: compute
+      devstack_controller: floating10
+      ovs_rpms:
+        - openvswitch-2.11.0-4.el7.x86_64.rpm
     floating10:
-      ansible_user: ubuntu
-      ansible_python_interpreter: /usr/bin/python3
+      ansible_user: centos
       ctlnic: eno1
       smartnic: ens3np0
       numvfs: 32
       smartnic_vlan: 114
-      network_profile: ubuntu.yaml
+      network_profile: redhat.yaml
       swapdisk: /dev/sdb
       system_cores: 2
-      xvio_cores: 2
+      xvio_cores: 0
       system_mem_g: 8
       interface_mtu:
         ens3: 9420
+      devstack_role: allinone
+      ovs_rpms:
+        - openvswitch2.11-2.11.0-26.el7.x86_64.rpm
+        - openvswitch-selinux-extra-policy-1.0-13.el7.noarch.rpm
+  vars:
+    devstack_branch: stable/train
+    neutron_ml2_plugin: ovs

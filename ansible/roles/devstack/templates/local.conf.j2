@@ -7,8 +7,8 @@ SERVICE_PASSWORD=$ADMIN_PASSWORD
 ## Services
 disable_service n-net
 
-# enable_plugin os-vif https://opendev.org/openstack/os-vif
-enable_plugin neutron https://opendev.org/openstack/neutron
+# enable_plugin os-vif https://opendev.org/openstack/os-vif $TARGET_BRANCH
+enable_plugin neutron https://opendev.org/openstack/neutron $TARGET_BRANCH
 
 PUBLIC_INTERFACE={{ smartnic }}
 HOST_IP=10.0.{{ smartnic_vlan }}.{{ last_octet }}
@@ -16,10 +16,29 @@ FLOATING_RANGE=10.0.{{ smartnic_vlan }}.0/24
 PUBLIC_NETWORK_GATEWAY=10.0.{{ smartnic_vlan }}.1
 Q_FLOATING_ALLOCATION_POOL=start=10.0.{{ smartnic_vlan }}.200,end=10.0.{{ smartnic_vlan }}.250
 
-# Enable agilio_ovs mech driver
+{% if devstack_role == 'compute' %}
+# This is a compute node.
+# Fewer services are needed.
+# Local services need the address of the controller
+
+SERVICE_HOST=10.0.{{ smartnic_vlan }}.{{ ctl_last_octet }}
+DATABASE_TYPE=mysql
+MYSQL_HOST=$SERVICE_HOST
+RABBIT_HOST=$SERVICE_HOST
+GLANCE_HOSTPORT=$SERVICE_HOST:9292
+ENABLED_SERVICES=n-cpu,q-agt,n-api-meta,c-vol,placement-client
+NOVA_VNC_ENABLED=True
+NOVNCPROXY_URL="http://$SERVICE_HOST:6080/vnc_lite.html"
+VNCSERVER_LISTEN=$HOST_IP
+VNCSERVER_PROXYCLIENT_ADDRESS=$VNCSERVER_LISTEN
+{% endif %}
+
+{% if neutron_ml2_plugin == 'aovs' %}
+# Enable agilio_ovs mech driver for xvio
 Q_PLUGIN=ml2
 Q_AGENT=openvswitch
 Q_ML2_PLUGIN_MECHANISM_DRIVERS=agilio_ovs
+{% endif %}
 
 # Open vSwitch provider networking
 # Set up the public interface on 'br-ex' an OVS bridge
@@ -33,7 +52,9 @@ Q_USE_PUBLIC_VETH=False
 PHYSICAL_NETWORK=public
 OVS_PHYSICAL_BRIDGE=br-ex
 PUBLIC_BRIDGE=br-ex
+{% if devstack_role != 'compute' %}
 OVS_BRIDGE_MAPPINGS=public:br-ex
+{% endif %}
 ML2_VLAN_RANGES=public
 Q_ML2_PLUGIN_TYPE_DRIVERS=vxlan,vlan,flat
 

@@ -14,15 +14,14 @@
   with_items: "{{ grubcfg.results }}"
   when: item.stat.exists and not item.stat.islnk
 
-- command: grubby --info=ALL
-  register: grubby_info
+- name: EL7 - Select latest kernel
+  shell: >-
+    rpm -qa kernel | rpmdev-sort | tail -n 1 |sed 's/^kernel/\/boot\/vmlinuz/'
+  args:
+    warn: no
+  register: latest_kernel
 
-- set_fact:
-    latest_kernel: >-
-      {{ grubby_info.stdout |
-      regex_findall('^kernel=(.*)', multiline=True) | sort | last }}
-
-- command: grubby --set-default={{ latest_kernel }}
+- command: grubby --set-default={{ latest_kernel.stdout | trim }}
 
 - command: >-
     grubby --args="{{ grub_cmdline_args | join(' ') }}" --update-kernel=ALL

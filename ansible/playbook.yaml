@@ -14,21 +14,26 @@
     tags: vfio-module
   - role: flower-firmware
     tags: flower-firmware
+    when: smartnic is defined
   - role: network-config
     tags: network-config
   - role: switchdev
     tags: switchdev
+    when: smartnic is defined
   - role: probe-tuning-profile
     tags: probe-tuning-profile
   - role: kernel-settings
     tags: kernel-settings
   - role: swap
     tags: swap
+    when: swapdisk is defined
   - role: devstack
     tags: devstack
   - role: openvswitch
     tags: openvswitch
   - role: virtio-forwarder
     tags: virtio-forwarder
+    when: xvio_cores > 0
   - role: aovs-plugin
     tags: aovs-plugin
+    when: neutron_ml2_plugin == "aovs"

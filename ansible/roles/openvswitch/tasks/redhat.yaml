@@ -9,10 +9,24 @@
     name: "*"
     state: latest
 
-- name: EL7 - ensure openvswitch is installed
+- name: EL7 - ensure openvswitch is installed from rdo
   yum:
     name: openvswitch
     state: latest
+  when: ovs_rpms is not defined
+
+- name: EL7 - copy openvswitch rpms over
+  copy:
+    src: files/{{ item }}
+    dest: /root/{{ item }}
+  with_items: "{{ ovs_rpms }}"
+  when: ovs_rpms is defined
+
+- name: EL7 - install openvswitch rpms
+  yum:
+    name: "{{ ovs_rpms | map('regex_replace', '^', '/root/') | list }}"
+    state: present
+  when: ovs_rpms is defined
 
 - set_fact:
     openvswitch_service: openvswitch

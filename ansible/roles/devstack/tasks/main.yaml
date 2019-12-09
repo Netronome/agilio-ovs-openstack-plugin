@@ -11,8 +11,8 @@
     append: true
     home: /opt/stack
     generate_ssh_key: true
-    ssh_key_type: ed25519
-    ssh_key_file: .ssh/id_ed25519
+    ssh_key_type: rsa
+    ssh_key_file: .ssh/id_rsa
     password: "$6$mysecretsalt$Ww9JYm6bHnqiBcJmHyeqdpF3KOUj5yLdbGp0/koXzqbnke\
               4yEycJ3yTmmJrXXR7SlZUVHU8nDp67uWr/gJqLN1"
     # ansible all -i localhost, -m debug -a \
@@ -51,8 +51,21 @@
   git:
     repo: https://git.openstack.org/openstack-dev/devstack
     dest: /opt/stack/devstack
+    version: "{{ devstack_branch | default('master') }}"
   become_user: stack
   become: true
+
+- name: Find IPv4 address of the controller
+  set_fact:
+    controller_ctlnic_ip: >-
+      {{ hostvars[devstack_controller].
+      ansible_facts[hostvars[devstack_controller].ctlnic]['ipv4']['address'] }}
+  when: devstack_controller is defined
+
+- name: Extract last octet of {{ controller_ctlnic_ip }}
+  set_fact:
+    ctl_last_octet: "{{ controller_ctlnic_ip | regex_replace('.*\\.') }}"
+  when: controller_ctlnic_ip is defined
 
 - name: Set up local.conf
   template:
